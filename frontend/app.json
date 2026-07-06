@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Шеф-стол",
+    "slug": "chef-table-frontend",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "chef-table",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-asset"
+    ]
+  }
+}

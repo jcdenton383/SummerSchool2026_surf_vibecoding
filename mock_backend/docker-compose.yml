@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chef_table
+      POSTGRES_USER: chef
+      POSTGRES_PASSWORD: chef
+    ports:
+      - "5432:5432"
+    volumes:
+      - chef_table_pgdata:/var/lib/postgresql/data
+      - ./migrations/001_init_schema.up.sql:/docker-entrypoint-initdb.d/001_init_schema.sql:ro
+      - ./migrations/002_seed_demo_data.up.sql:/docker-entrypoint-initdb.d/002_seed_demo_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chef -d chef_table"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mock-backend:
+    build:
+      context: .
+    environment:
+      APP_PORT: "8080"
+      DATABASE_URL: postgres://chef:chef@postgres:5432/chef_table?sslmode=disable
+      DEMO_AUTH_CODE: "1234"
+      DEMO_TOKEN: demo-token
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  chef_table_pgdata:

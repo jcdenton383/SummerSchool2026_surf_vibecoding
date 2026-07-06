@@ -1,0 +1,1009 @@
+openapi: "3.0.3"
+info:
+  title: "Chef Table Mobile API"
+  version: "1.0.0"
+  description: >
+    API contract for the client mobile application of the Chef Table cooking
+    studio. The contract covers phone authentication, public schedule browsing,
+    customer bookings, participants, offline payment choice, notifications,
+    legal content and chef reviews. Administrative schedule, program, chef and
+    studio-cancellation management is intentionally out of scope.
+servers:
+  - url: "https://api.example.com/v1"
+    description: "Production placeholder"
+  - url: "https://staging-api.example.com/v1"
+    description: "Staging placeholder"
+tags:
+  - name: Auth
+  - name: Schedule
+  - name: Bookings
+  - name: Notifications
+  - name: Reviews
+  - name: Legal
+
+paths:
+  /auth/phone-code:
+    post:
+      tags: [Auth]
+      summary: Request a phone verification code
+      operationId: requestPhoneCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneCodeRequest'
+      responses:
+        '202':
+          description: Verification code request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneCodeResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /auth/verify-code:
+    post:
+      tags: [Auth]
+      summary: Verify phone code and create or return the customer session
+      operationId: verifyPhoneCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyCodeRequest'
+      responses:
+        '200':
+          description: Authenticated session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Invalid or expired verification code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Get the current client profile
+      operationId: getCurrentClient
+      responses:
+        '200':
+          description: Current authenticated client.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /legal/terms:
+    get:
+      tags: [Legal]
+      summary: Get terms, cancellation rules and personal data policy
+      operationId: getTerms
+      security: []
+      responses:
+        '200':
+          description: Legal content for the mobile application.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TermsDocument'
+
+  /slots:
+    get:
+      tags: [Schedule]
+      summary: List schedule slots
+      description: >
+        Returns public schedule data. If no date range is provided, the backend
+        returns the nearest 7 days. Only date filtering is supported in MVP.
+      operationId: listSlots
+      security: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Inclusive date filter start.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Inclusive date filter end.
+      responses:
+        '200':
+          description: Schedule slots with embedded program and chef data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlotListResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /slots/{slotId}:
+    get:
+      tags: [Schedule]
+      summary: Get schedule slot details
+      operationId: getSlot
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SlotId'
+      responses:
+        '200':
+          description: Detailed class card data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleSlot'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Create a booking
+      description: >
+        Creates an individual or group booking only after backend validation of
+        slot status, capacity, participant data, equipment choices and payment
+        method. The application must not create a local confirmed booking when
+        this operation fails.
+      operationId: createBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Booking created.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the created booking.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Slot state conflict, stale data or insufficient seats.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Slot is no longer available for booking.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /bookings/my:
+    get:
+      tags: [Bookings]
+      summary: List bookings of the current client
+      operationId: listMyBookings
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: relation
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [upcoming, completed, cancelled, all]
+            default: all
+      responses:
+        '200':
+          description: Customer bookings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Get booking details
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking owned by the current client.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/participants:
+    post:
+      tags: [Bookings]
+      summary: Add participants to an existing upcoming booking
+      operationId: addBookingParticipants
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddParticipantsRequest'
+      responses:
+        '200':
+          description: Updated booking and current slot availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingMutationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: No seats left or booking is not editable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Slot or booking is no longer available for changes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings/{bookingId}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel the whole booking
+      operationId: cancelBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Booking cancelled and availability updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Cancellation is blocked, for example less than 24 hours before class.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/TemporaryUnavailable'
+
+  /bookings/{bookingId}/participants/{participantId}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel one participant in a group booking
+      operationId: cancelBookingParticipant
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - $ref: '#/components/parameters/ParticipantId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Participant cancelled and booking totals updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Participant cancellation is blocked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /notifications/my:
+    get:
+      tags: [Notifications]
+      summary: List notifications of the current client
+      operationId: listMyNotifications
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/NotificationType'
+      responses:
+        '200':
+          description: Notifications visible to the current client.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chef-reviews:
+    post:
+      tags: [Reviews]
+      summary: Create a chef review for a completed booking
+      operationId: createChefReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChefReviewRequest'
+      responses:
+        '201':
+          description: Review created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChefReview'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Review already exists or booking is not completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SlotId:
+      name: slotId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Schedule slot identifier.
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Booking identifier owned by the current client.
+    ParticipantId:
+      name: participantId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Booking participant identifier.
+
+  responses:
+    Unauthorized:
+      description: Authentication is required or the token is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated client cannot access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Too many requests.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TemporaryUnavailable:
+      description: Backend is temporarily unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    PhoneCodeRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          example: '+79991234567'
+          description: Phone number in E.164 format.
+
+    PhoneCodeResponse:
+      type: object
+      required: [requestId, retryAfterSeconds]
+      properties:
+        requestId:
+          type: string
+        retryAfterSeconds:
+          type: integer
+          minimum: 0
+
+    VerifyCodeRequest:
+      type: object
+      required: [phone, code]
+      properties:
+        phone:
+          type: string
+          example: '+79991234567'
+        code:
+          type: string
+          minLength: 4
+          maxLength: 8
+
+    AuthSession:
+      type: object
+      required: [accessToken, tokenType, expiresInSeconds, client]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresInSeconds:
+          type: integer
+        client:
+          $ref: '#/components/schemas/Client'
+
+    Client:
+      type: object
+      required: [id, phone, authStatus]
+      properties:
+        id:
+          type: string
+        phone:
+          type: string
+        name:
+          type: string
+          nullable: true
+        authStatus:
+          type: string
+          enum: [authenticated]
+
+    TermsDocument:
+      type: object
+      required: [version, updatedAt, cancellationPolicy, personalDataPolicy]
+      properties:
+        version:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        cancellationPolicy:
+          type: string
+        personalDataPolicy:
+          type: string
+        terms:
+          type: string
+
+    SlotListResponse:
+      type: object
+      required: [items]
+      properties:
+        defaultRangeApplied:
+          type: boolean
+          description: True when backend used the default nearest 7 days range.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleSlot'
+
+    ScheduleSlot:
+      type: object
+      required:
+        - id
+        - program
+        - chef
+        - startsAt
+        - durationMinutes
+        - capacity
+        - availableSeats
+        - seatPrice
+        - rentalPricePerParticipant
+        - status
+      properties:
+        id:
+          type: string
+        program:
+          $ref: '#/components/schemas/ClassProgram'
+        chef:
+          $ref: '#/components/schemas/Chef'
+        startsAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+          minimum: 1
+        capacity:
+          type: integer
+          minimum: 0
+        availableSeats:
+          type: integer
+          minimum: 0
+        seatPrice:
+          $ref: '#/components/schemas/Money'
+        requiredEquipmentInfo:
+          type: string
+          nullable: true
+        rentalEquipmentInfo:
+          type: string
+          nullable: true
+        rentalPricePerParticipant:
+          $ref: '#/components/schemas/Money'
+        status:
+          $ref: '#/components/schemas/SlotStatus'
+        cancellationReason:
+          type: string
+          nullable: true
+
+    ClassProgram:
+      type: object
+      required: [id, title, direction, difficulty, menu, defaultDurationMinutes]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        direction:
+          type: string
+        difficulty:
+          type: string
+        menu:
+          type: string
+        defaultDurationMinutes:
+          type: integer
+          minimum: 1
+        requiredEquipment:
+          type: string
+          nullable: true
+        dishImageUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Non-MVP 1.1 field with dish photo URL for schedule and class details UI.
+
+    Chef:
+      type: object
+      required: [id, name, rating, ratingCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+        ratingCount:
+          type: integer
+          minimum: 0
+
+    SlotStatus:
+      type: string
+      enum: [available, full, cancelled_by_studio, completed]
+
+    BookingListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+
+    Booking:
+      type: object
+      required:
+        - id
+        - clientId
+        - slot
+        - status
+        - participantCount
+        - participants
+        - totalAmount
+        - paymentStatus
+        - paymentChoice
+        - createdAt
+        - updatedAt
+        - cancellableUntil
+      properties:
+        id:
+          type: string
+        clientId:
+          type: string
+        slot:
+          $ref: '#/components/schemas/ScheduleSlot'
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        participantCount:
+          type: integer
+          minimum: 0
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingParticipant'
+        totalAmount:
+          $ref: '#/components/schemas/Money'
+        paymentStatus:
+          $ref: '#/components/schemas/PaymentStatus'
+        paymentChoice:
+          $ref: '#/components/schemas/PaymentChoice'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        cancellableUntil:
+          type: string
+          format: date-time
+        cancellationReason:
+          type: string
+          nullable: true
+        review:
+          allOf:
+            - $ref: '#/components/schemas/ChefReview'
+          nullable: true
+        reviewAvailable:
+          type: boolean
+          description: True when the completed booking can be reviewed.
+
+    BookingStatus:
+      type: string
+      enum:
+        - confirmed
+        - offline_payment_pending
+        - cancelled_by_client
+        - cancelled_by_studio
+        - completed
+
+    PaymentStatus:
+      type: string
+      enum: [not_required, pending_offline, paid_offline, refunded, refund_pending]
+
+    PaymentChoice:
+      type: object
+      required: [method, status, amount]
+      properties:
+        method:
+          type: string
+          enum: [offline, online_placeholder]
+        status:
+          type: string
+          enum: [selected, placeholder_shown, fallback_to_offline]
+        amount:
+          $ref: '#/components/schemas/Money'
+
+    BookingParticipant:
+      type: object
+      required:
+        - id
+        - bookingId
+        - name
+        - isPrimary
+        - status
+        - allergyStatus
+        - equipmentOption
+        - rentalPriceSnapshot
+      properties:
+        id:
+          type: string
+        bookingId:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        isPrimary:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/ParticipantStatus'
+        allergyStatus:
+          $ref: '#/components/schemas/AllergyStatus'
+        allergyComment:
+          type: string
+          nullable: true
+          description: Required when allergyStatus is has_allergy.
+        equipmentOption:
+          $ref: '#/components/schemas/EquipmentOption'
+        rentalPriceSnapshot:
+          $ref: '#/components/schemas/Money'
+
+    ParticipantStatus:
+      type: string
+      enum: [active, cancelled_by_client, cancelled_by_studio]
+
+    AllergyStatus:
+      type: string
+      enum: [none, has_allergy]
+
+    EquipmentOption:
+      type: string
+      enum: [own, rental]
+
+    CreateBookingRequest:
+      type: object
+      required: [slotId, clientName, participants, paymentMethod, expectedTotalAmount]
+      properties:
+        slotId:
+          type: string
+        clientName:
+          type: string
+          minLength: 1
+          description: Name of the main client collected during booking.
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ParticipantInput'
+        paymentMethod:
+          type: string
+          enum: [offline, online_placeholder]
+        expectedTotalAmount:
+          $ref: '#/components/schemas/Money'
+
+    AddParticipantsRequest:
+      type: object
+      required: [participants, expectedTotalAmount]
+      properties:
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ParticipantInput'
+        expectedTotalAmount:
+          $ref: '#/components/schemas/Money'
+
+    ParticipantInput:
+      type: object
+      required: [name, allergyStatus, equipmentOption]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        allergyStatus:
+          $ref: '#/components/schemas/AllergyStatus'
+        allergyComment:
+          type: string
+          nullable: true
+          description: Required when allergyStatus is has_allergy.
+        equipmentOption:
+          $ref: '#/components/schemas/EquipmentOption'
+
+    CancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          nullable: true
+
+    BookingMutationResponse:
+      type: object
+      required: [booking, slot]
+      properties:
+        booking:
+          $ref: '#/components/schemas/Booking'
+        slot:
+          $ref: '#/components/schemas/ScheduleSlot'
+
+    NotificationListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+
+    Notification:
+      type: object
+      required: [id, clientId, type, channel, status, plannedAt]
+      properties:
+        id:
+          type: string
+        clientId:
+          type: string
+        bookingId:
+          type: string
+          nullable: true
+        slotId:
+          type: string
+          nullable: true
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        channel:
+          type: string
+          enum: [push, sms]
+        status:
+          type: string
+          enum: [planned, sent, failed]
+        plannedAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        message:
+          type: string
+          nullable: true
+
+    NotificationType:
+      type: string
+      enum: [class_reminder, studio_cancelled_class]
+
+    CreateChefReviewRequest:
+      type: object
+      required: [bookingId, rating]
+      properties:
+        bookingId:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+
+    ChefReview:
+      type: object
+      required: [id, bookingId, clientId, chefId, rating, createdAt]
+      properties:
+        id:
+          type: string
+        bookingId:
+          type: string
+        clientId:
+          type: string
+        chefId:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          example: 3500
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: RUB
+
+    ErrorResponse:
+      type: object
+      required: [errorCode, message]
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - validation_error
+            - invalid_phone
+            - invalid_code
+            - rate_limited
+            - unauthorized
+            - forbidden
+            - not_found
+            - no_seats
+            - stale_slot_data
+            - participant_limit_exceeded
+            - validation_conflict
+            - slot_cancelled_or_unavailable
+            - rebooking_forbidden
+            - cancellation_window_closed
+            - booking_not_editable
+            - already_exists
+            - temporary_unavailable
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+security:
+  - bearerAuth: []

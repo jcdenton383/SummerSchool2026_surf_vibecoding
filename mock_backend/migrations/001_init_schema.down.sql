@@ -1,0 +1,10 @@
+drop table if exists legal_terms;
+drop table if exists notifications;
+drop table if exists chef_reviews;
+drop table if exists booking_participants;
+drop table if exists bookings;
+drop table if exists schedule_slots;
+drop table if exists chefs;
+drop table if exists class_programs;
+drop table if exists clients;
+drop extension if exists pgcrypto;
